@@ -1,0 +1,9 @@
+name: email_threads
+version: '1.0.0'
+config-version: 2
+profile: email_threads
+model-paths: ['models']
+
+models:
+  email_threads:
+    +materialized: table

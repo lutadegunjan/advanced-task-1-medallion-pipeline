@@ -1,0 +1,26 @@
+COINBASE REAL-TIME STREAMING PIPELINE
+
+Source:
+Coinbase Advanced Trade WebSocket
+wss://advanced-trade-ws.coinbase.com
+
+Streaming Platform:
+Apache NiFi
+
+Flow:
+1. ConnectWebSocket connects to Coinbase.
+2. GenerateFlowFile creates BTC-USD ticker subscription.
+3. PutWebSocket sends the subscription.
+4. JoltTransformJSON transforms incoming ticker events.
+5. InvokeHTTP inserts JSONEachRow records into ClickHouse.
+
+Destination:
+ClickHouse
+Database: bronze
+Table: coinbase_ticker
+
+Verified ingestion:
+85,335 records
+
+Architecture:
+Coinbase WebSocket -> Apache NiFi -> ClickHouse Bronze
