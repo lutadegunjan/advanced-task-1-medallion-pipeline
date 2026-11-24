@@ -2,33 +2,48 @@
 
 ## Project Overview
 
-This project implements a data engineering architecture combining batch and real-time streaming pipelines using Apache Airflow, dbt, Apache NiFi, and ClickHouse.
+This project implements batch and real-time data pipelines using Apache Airflow, Apache NiFi, dbt, and ClickHouse.
 
-The architecture follows the Medallion pattern: Bronze, Silver, and Gold.
+Both pipelines follow the ClickHouse Medallion Architecture:
 
-## Architecture
+- **Bronze:** Raw ingested data
+- **Silver:** Cleaned and transformed data
+- **Gold:** Aggregated analytical data
 
-### Batch Pipeline
+## 1. Batch Pipeline – DHAP-34 Email Thread Dataset
 
-CSV Dataset → Apache Airflow → ClickHouse Bronze → dbt → Silver → Gold
+**Architecture:**
 
-- Source: DHAP-34 email thread dataset
-- Airflow orchestrates ingestion and dbt transformations.
-- Bronze stores the raw email records.
-- Silver normalizes email fields and parses timestamps.
+DHAP-34 CSV → Apache Airflow → ClickHouse Bronze → dbt → Silver → Gold
+
+- Source: DHAP-34 email thread dataset (`email_thread_details`).
+- The dataset is associated with the DHAP-34/42 work.
+- Airflow orchestrates CSV ingestion and dbt transformations.
+- Bronze stores ingested email records.
+- Silver normalizes sender and recipient fields and parses timestamps.
 - Gold aggregates email activity by thread.
 
-### Streaming Pipeline
+**Airflow DAG:** `dhap34_email_batch_pipeline`
 
-Coinbase WebSocket → Apache NiFi → ClickHouse Bronze
+The current Advanced Task 1 DAG reads the CSV dataset directly.
 
-- Source: Coinbase Advanced Trade WebSocket
-- Product: BTC-USD
-- Channel: ticker
-- NiFi handles WebSocket ingestion, JSON transformation, and HTTP delivery.
-- ClickHouse stores streaming records in the Bronze layer.
+## 2. Real-Time Pipeline – Coinbase BTC-USD
 
-## Technology Stack
+**Architecture:**
+
+Coinbase Advanced Trade WebSocket → Apache NiFi → ClickHouse Bronze → dbt → Silver → Gold
+
+- Source: Coinbase Advanced Trade WebSocket.
+- Endpoint: `wss://advanced-trade-ws.coinbase.com`
+- Product: `BTC-USD`
+- Channel: `ticker`
+- NiFi manages WebSocket ingestion, JSON transformation, and HTTP delivery.
+- Silver parses timestamps and converts numeric fields.
+- Gold generates product-level ticker statistics.
+
+NiFi continuously ingests into Bronze. Silver and Gold are materialized dbt tables refreshed when dbt models run.
+
+## 3. Technology Stack
 
 - Python
 - Apache Airflow
@@ -36,20 +51,32 @@ Coinbase WebSocket → Apache NiFi → ClickHouse Bronze
 - dbt
 - ClickHouse
 - Docker
-- PowerShell
+- PostgreSQL
 
-## Verified Results
+## 4. Verified Results
 
-| Pipeline / Layer | Records |
-|---|---:|
-| Email Batch – Bronze | 21,684 |
-| Email Batch – Silver | 21,684 |
-| Email Batch – Gold | 4,167 |
-| Coinbase Streaming – Bronze | 85,335 |
+Counts verified directly from ClickHouse on November 24, 2026.
 
-These are observed counts from the verification performed on November 23, 2026. Streaming counts may increase as new events arrive.
+| Pipeline | Layer | ClickHouse Table | Records |
+|---|---|---|---:|
+| Email Batch | Bronze | `bronze.email_thread_details` | 21,684 |
+| Email Batch | Silver | `silver.silver_email_threads` | 21,684 |
+| Email Batch | Gold | `gold.gold_email_thread_summary` | 4,167 |
+| Coinbase | Bronze | `bronze.coinbase_ticker` | 283,641 |
+| Coinbase | Silver | `silver.coinbase_ticker` | 283,424 |
+| Coinbase | Gold | `gold.coinbase_ticker_summary` | 1 |
 
-## Repository Structure
+### Execution Verification
+
+- Airflow batch ingestion task: Success
+- Airflow dbt transformation task: Success
+- Coinbase dbt models: 2 passed, 0 errors
+- All six ClickHouse tables verified as populated.
+- Coinbase streaming ingestion confirmed through NiFi and ClickHouse.
+
+These are point-in-time counts. Coinbase Bronze continues to grow as new events arrive. Silver and Gold reflect the latest dbt refresh.
+
+## 5. Repository Structure
 
 ```text
 Advanced_Task_1/
@@ -59,7 +86,9 @@ Advanced_Task_1/
 ├── dbt/
 │   ├── models/
 │   │   ├── silver_email_threads.sql
-│   │   └── gold_email_thread_summary.sql
+│   │   ├── gold_email_thread_summary.sql
+│   │   ├── coinbase_ticker.sql
+│   │   └── coinbase_ticker_summary.sql
 │   ├── macros/
 │   │   └── generate_schema_name.sql
 │   └── dbt_project.yml
@@ -68,4 +97,33 @@ Advanced_Task_1/
 ├── clickhouse/
 │   └── table_definitions.sql
 ├── docs/
-└── screenshots/
+├── screenshots/
+├── .gitignore
+└── README.md
+```
+
+## 6. Running the Pipelines
+
+### Trigger the Batch DAG
+
+```powershell
+docker exec data_engineering_mini_project-airflow-1 airflow dags trigger dhap34_email_batch_pipeline
+```
+
+### Run Coinbase dbt Transformations
+
+```powershell
+docker exec data_engineering_mini_project-airflow-1 bash -c "dbt run --select +coinbase_ticker_summary --project-dir /opt/airflow/dbt/email_threads --profiles-dir /home/airflow/.dbt"
+```
+
+NiFi handles Coinbase WebSocket ingestion independently.
+
+## 7. Security
+
+Credentials and local environment configuration are excluded from version control.
+
+Do not commit `.env` files, dbt profiles, passwords, or access tokens.
+
+## 8. Demo Video
+
+Demo video link: Pending recording and upload.

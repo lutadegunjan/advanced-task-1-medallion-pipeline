@@ -1,12 +1,15 @@
 ﻿from datetime import datetime
+import yaml
 import pandas as pd
 import clickhouse_connect
-import os
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
 
 CSV_PATH = "/opt/airflow/data/email_thread_details.csv"
+PROFILE_PATH = "/home/airflow/.dbt/profiles.yml"
+
 
 def load_email_threads():
     df = pd.read_csv(CSV_PATH, dtype=str, keep_default_na=False)
@@ -22,50 +25,59 @@ def load_email_threads():
         "to": "recipient"
     })
 
+    with open(PROFILE_PATH, "r") as profile_file:
+        profile = yaml.safe_load(profile_file)["email_threads"]["outputs"]["dev"]
+
     client = clickhouse_connect.get_client(
-        host="host.docker.internal",
-        port=8123,
-        username="batch",
-        password=os.environ["CLICKHOUSE_PASSWORD"],
-        database="bronze"
+        host=profile["host"],
+        port=int(profile["port"]),
+        username=profile["user"],
+        password=profile["password"],
+        database=profile["database"]
     )
 
-    client.command("""
-        CREATE TABLE IF NOT EXISTS bronze.email_thread_details (
-            thread_id String,
-            subject String,
-            raw_timestamp String,
-            sender String,
-            recipient String,
-            body String
-        )
-        ENGINE = MergeTree
-        ORDER BY (thread_id, raw_timestamp)
-    """)
+    try:
+        client.command("""
+            CREATE TABLE IF NOT EXISTS bronze.email_thread_details (
+                thread_id String,
+                subject String,
+                raw_timestamp String,
+                sender String,
+                recipient String,
+                body String
+            )
+            ENGINE = MergeTree
+            ORDER BY (thread_id, raw_timestamp)
+        """)
 
+        client.command("TRUNCATE TABLE bronze.email_thread_details")
 
-    columns = [
-        "thread_id", "subject", "raw_timestamp",
-        "sender", "recipient", "body"
-    ]
+        columns = [
+            "thread_id", "subject", "raw_timestamp",
+            "sender", "recipient", "body"
+        ]
 
-    for start in range(0, len(df), 1000):
-        chunk = df.iloc[start:start + 1000]
-        client.insert(
-            "email_thread_details",
-            chunk[columns].values.tolist(),
-            column_names=columns
-        )
+        for start in range(0, len(df), 1000):
+            chunk = df.iloc[start:start + 1000]
+            client.insert(
+                "email_thread_details",
+                chunk[columns].values.tolist(),
+                column_names=columns
+            )
 
-    loaded = client.query(
-        "SELECT count() FROM bronze.email_thread_details"
-    ).result_rows[0][0]
+        loaded = client.query(
+            "SELECT count() FROM bronze.email_thread_details"
+        ).result_rows[0][0]
 
-    if loaded != len(df):
-        raise ValueError(f"Expected {len(df)} rows, loaded {loaded}")
+        if loaded != len(df):
+            raise ValueError(
+                f"Expected {len(df)} rows, loaded {loaded}"
+            )
 
-    print(f"SUCCESS: Loaded and verified {loaded} email records into Bronze")
-    client.close()
+        print(f"SUCCESS: Loaded and verified {loaded} email records into Bronze")
+
+    finally:
+        client.close()
 
 
 with DAG(
@@ -73,7 +85,7 @@ with DAG(
     start_date=datetime(2026, 11, 1),
     schedule=None,
     catchup=False,
-    tags=["DHAP-34", "ClickHouse", "Bronze"]
+    tags=["DHAP-34", "ClickHouse", "Bronze", "Silver", "Gold"]
 ) as dag:
 
     load_bronze = PythonOperator(
@@ -81,4 +93,14 @@ with DAG(
         python_callable=load_email_threads
     )
 
+    transform_email = BashOperator(
+        task_id="transform_email_threads_with_dbt",
+        bash_command=(
+            "/home/airflow/.local/bin/dbt run "
+            "--select +gold_email_thread_summary "
+            "--project-dir /opt/airflow/dbt/email_threads "
+            "--profiles-dir /home/airflow/.dbt"
+        )
+    )
 
+    load_bronze >> transform_email
