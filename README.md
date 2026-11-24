@@ -62,19 +62,20 @@ Counts verified directly from ClickHouse on November 25, 2026.
 | Email Batch | Bronze | `bronze.email_thread_details` | 21,684 |
 | Email Batch | Silver | `silver.silver_email_threads` | 21,684 |
 | Email Batch | Gold | `gold.gold_email_thread_summary` | 4,167 |
-| Coinbase | Bronze | `bronze.coinbase_ticker` | 359,282 |
-| Coinbase | Silver | `silver.coinbase_ticker` | 283,424 |
-| Coinbase | Gold | `gold.coinbase_ticker_summary` | 1 |
+| Coinbase | Bronze | `bronze.coinbase_ticker` | 362,171 |
+| Coinbase | Silver | `silver.coinbase_ticker` | 361,466 |
+| Coinbase | Gold | `gold.coinbase_ticker_summary` | 361,466 |
 
 ### Execution Verification
 
-- Airflow batch ingestion task: Success
-- Airflow dbt transformation task: Success
-- Coinbase dbt models: 2 passed, 0 errors
+- Airflow DAG `dhap34_email_batch_pipeline`: latest run successful.
+- Airflow batch ingestion and dbt transformation tasks: successful.
+- Coinbase dbt models: 2 passed, 0 warnings, 0 errors.
 - All six ClickHouse tables verified as populated.
 - Coinbase streaming ingestion confirmed through NiFi and ClickHouse. During a 30-second live test, Bronze increased from 358,104 to 358,280 records.
+- Coinbase Gold summary verified for product `BTC-USD`, with 361,466 ticker records.
 
-These are point-in-time counts. Coinbase Bronze continues to grow as new events arrive. Silver and Gold reflect the latest dbt refresh.
+These are point-in-time counts. Coinbase Bronze continues to grow as new events arrive. Silver and Gold are materialized dbt tables and reflect the most recent successful dbt refresh. Bronze can therefore contain newer events than Silver and Gold.
 
 ## 5. Repository Structure
 
