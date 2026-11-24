@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 import yaml
 import pandas as pd
 import clickhouse_connect
@@ -19,6 +19,9 @@ def load_email_threads():
     if missing:
         raise ValueError(f"Missing CSV columns: {missing}")
 
+    if len(df) != 21684:
+        raise ValueError(f"CSV validation failed: expected 21684 rows, found {len(df)}")
+
     df = df[expected].rename(columns={
         "timestamp": "raw_timestamp",
         "from": "sender",
@@ -33,7 +36,9 @@ def load_email_threads():
         port=int(profile["port"]),
         username=profile["user"],
         password=profile["password"],
-        database=profile["database"]
+        database=profile["database"],
+        connect_timeout=30,
+        send_receive_timeout=300
     )
 
     try:
@@ -50,19 +55,25 @@ def load_email_threads():
             ORDER BY (thread_id, raw_timestamp)
         """)
 
-        client.command("TRUNCATE TABLE bronze.email_thread_details")
-
         columns = [
             "thread_id", "subject", "raw_timestamp",
             "sender", "recipient", "body"
         ]
 
-        for start in range(0, len(df), 1000):
-            chunk = df.iloc[start:start + 1000]
+        client.command("TRUNCATE TABLE bronze.email_thread_details")
+        print(f"Validated {len(df)} source rows. Starting Bronze load.", flush=True)
+
+        batch_size = 100
+        for start in range(0, len(df), batch_size):
+            chunk = df.iloc[start:start + batch_size]
             client.insert(
                 "email_thread_details",
                 chunk[columns].values.tolist(),
                 column_names=columns
+            )
+            print(
+                f"Loaded {min(start + batch_size, len(df))}/{len(df)} rows",
+                flush=True
             )
 
         loaded = client.query(
@@ -78,7 +89,6 @@ def load_email_threads():
 
     finally:
         client.close()
-
 
 with DAG(
     dag_id="dhap34_email_batch_pipeline",

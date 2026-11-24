@@ -1,4 +1,4 @@
-﻿# Advanced Task 1 – Batch and Real-Time Data Pipelines
+# Advanced Task 1 – Batch and Real-Time Data Pipelines
 
 ## Project Overview
 
@@ -55,14 +55,14 @@ NiFi continuously ingests into Bronze. Silver and Gold are materialized dbt tabl
 
 ## 4. Verified Results
 
-Counts verified directly from ClickHouse on November 24, 2026.
+Counts verified directly from ClickHouse on November 25, 2026.
 
 | Pipeline | Layer | ClickHouse Table | Records |
 |---|---|---|---:|
 | Email Batch | Bronze | `bronze.email_thread_details` | 21,684 |
 | Email Batch | Silver | `silver.silver_email_threads` | 21,684 |
 | Email Batch | Gold | `gold.gold_email_thread_summary` | 4,167 |
-| Coinbase | Bronze | `bronze.coinbase_ticker` | 283,641 |
+| Coinbase | Bronze | `bronze.coinbase_ticker` | 359,282 |
 | Coinbase | Silver | `silver.coinbase_ticker` | 283,424 |
 | Coinbase | Gold | `gold.coinbase_ticker_summary` | 1 |
 
@@ -72,7 +72,7 @@ Counts verified directly from ClickHouse on November 24, 2026.
 - Airflow dbt transformation task: Success
 - Coinbase dbt models: 2 passed, 0 errors
 - All six ClickHouse tables verified as populated.
-- Coinbase streaming ingestion confirmed through NiFi and ClickHouse.
+- Coinbase streaming ingestion confirmed through NiFi and ClickHouse. During a 30-second live test, Bronze increased from 358,104 to 358,280 records.
 
 These are point-in-time counts. Coinbase Bronze continues to grow as new events arrive. Silver and Gold reflect the latest dbt refresh.
 
